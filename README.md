@@ -37,9 +37,11 @@ At each timestep:
 - Software: Conda, Git, `uv`
  
 ### Cloud (Google Colab)
-- Compute: A100 GPU Runtime (Colab's A100 provides 40GB VRAM, satisfying the [official ≥24GB requirement](https://www.mintlify.com/NVIDIA/Isaac-GR00T/getting-started/hardware-requirements) for GR00T N1.6-3B)
-- Network: [ngrok](https://ngrok.com) account (required to establish the TCP tunnel)
+- Compute: A100 GPU Runtime (40GB VRAM)
+  - A100 far meets [official ≥8GB requirement](https://www.mintlify.com/NVIDIA/Isaac-GR00T/getting-started/hardware-requirements) for GR00T N1.6-3B inference only
+  - FlashAttention requires Ampere GPUs (e.g., A100); using T4/V100 may cause compatibility issues or require disabling flash-attn
 
+- Network: [ngrok](https://ngrok.com) account (required to establish the TCP tunnel)
 ---
 
 ## Part 1: Cloud Setup — GR00T Policy Server (Google Colab)
