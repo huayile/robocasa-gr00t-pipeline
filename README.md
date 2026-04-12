@@ -340,7 +340,7 @@ gr00t/eval/sim/robocasa/robocasa_uv/.venv/bin/python grasp_experiments/fixed_pnp
     --host <NGROK_HOST> --port <NGROK_PORT> \
     --obj-a-x -0.4 --obj-b-x 0.4 --seed 2 --n-episodes 3
  
-# Close: objects 1m apart
+# depart: objects 1m apart
 gr00t/eval/sim/robocasa/robocasa_uv/.venv/bin/python grasp_experiments/fixed_pnp_env.py \
     --host <NGROK_HOST> --port <NGROK_PORT> \
     --obj-a-x -0.4 --obj-b-x 0.6 --seed 2 --n-episodes 3
@@ -371,7 +371,7 @@ cp -r ~/workspace/Isaac-GR00T/grasp_experiments/videos /mnt/c/Users/Username/Des
  
 ---
  
-## Task List (Sample)
+## Task List
  
 ```bash
 # List all available Franka Panda tasks
@@ -384,16 +384,15 @@ for e in sorted(gym.envs.registry.keys()):
 "
 ```
  
-Selected tasks of interest:
- 
+Examples include:
 | Task | Description |
 |---|---|
 | `OpenDrawer_PandaOmron_Env` | Open a kitchen drawer |
 | `PnPCounterToCab_PandaOmron_Env` | Pick from counter, place in cabinet |
 | `CoffeeServeMug_PandaOmron_Env` | Move mug from coffee machine to counter |
-| `TurnOnSinkFaucet_PandaOmron_Env` | Turn on sink faucet |
-| `StackBowlsInSink_PandaOmron_Env` | Stack bowls in sink (multi-step) |
+| `StackBowlsInSink_PandaOmron_Env` | Pick and stack bowls in sink |
 | `PrepareCoffee_PandaOmron_Env` | Multi-step coffee preparation |
+|TurnOnSinkFaucet_PandaOmron_Env |Turn on sink faucet|
  
 ---
  
