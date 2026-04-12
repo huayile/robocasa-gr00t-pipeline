@@ -246,6 +246,130 @@ Tested with GR00T N1.6-3B, Franka Panda, Google Colab A100, ngrok TCP tunnel.
 - Multi-step tasks requiring sequential grasping remain challenging for zero-shot.
 
 ---
+
+## Part 5: Custom Simulation Environment (`fixed_pnp_env.py`)
+ 
+A script for VLA benchmarking with configurable object types and positions. Located at `grasp_experiments/fixed_pnp_env.py`.
+ 
+### Design
+ 
+The environment places object A and B on the kitchen counter next to the sink. The robot must pick object A and place it into object B. Key properties:
+ 
+- **Fixed scene**: `--seed 2` gives a well-tested layout. 
+- **Specific objects**: specify exact object names (`banana`, `bowl`) rather than random categories
+- **Precise positioning**: object XY positions are set relative to the robot base via MuJoCo joint control, rather than RoboCasa's random placement
+- **Official pipeline**: uses `GrootRoboCasaEnv` wrapper and `create_grootrobocasa_env_class` for correct `ROBOCASA_PANDA_OMRON` observation/action format
+ 
+### Coordinate System
+ 
+Positions are specified relative to the robot base:
+- `x`: left (-) / right (+)
+- `y`: forward distance from robot (positive = away from robot)
+- `z`: automatically set from RoboCasa placement (counter surface height)
+ 
+The default configuration places both objects at ~0.41m from the robot base, where both objects are within the robot's reach.
+ 
+### Implementation
+To ensure fixed environment and overcome RoboCasa's default randomization without modifying its source code, some overrides were employed:
+ 
+**Registration:** RoboCasa's `create_env_robosuite()` only accepts a fixed set of parameters. The solution is a dynamic subclass with parameters baked in at class definition time:
+ 
+```python
+class FixedPnPInstance(FixedPnP):
+    def __init__(self, *args, **kwargs):
+        super().__init__(obj_a_group="banana", obj_a_x=-0.4, ...)
+ 
+REGISTERED_ENVS["FixedPnP"] = FixedPnPInstance
+create_grootrobocasa_env_class("FixedPnP", "PandaOmron", "panda_omron")
+```
+ 
+**Layout fixing:** `create_env_robosuite()` hardcodes a list of layouts via `env_kwargs.update(...)`, so passing `layout_and_style_ids` as a kwarg has no effect. The solution is to override `self.layout_and_style_ids` directly after the parent `__init__` completes — this works because `_reset_internal` reads from `self.layout_and_style_ids` at each episode reset:
+ 
+```python
+class FixedPnP(Kitchen):
+    FIXED_LAYOUT = [(5, 1)]  # U_SHAPED_SMALL + SCANDANAVIAN
+ 
+    def __init__(self, ...):
+        super().__init__(*args, **kwargs)
+        self.layout_and_style_ids = self.FIXED_LAYOUT  # override after parent sets it
+```
+ 
+This cleanly enforces layout [5,1] in both preview and inference modes without modifying any library code. Verify with:
+```python
+inner_env = env.unwrapped.env
+print(inner_env.layout_id, inner_env.style_id)  # should print: 5 1
+```
+ 
+**Position control:** After RoboCasa's standard reset, `_reset_internal` overrides XY positions using MuJoCo free joint `qpos`, while preserving each object's Z from the original placement (correct surface height per object):
+ 
+```python
+def _reset_internal(self):
+    super()._reset_internal()
+    base = self.robots[0].base_pos
+    jnt_a = self.sim.model.body_jntadr[self.sim.model.body_name2id("obj_a_main")]
+    adr_a = self.sim.model.jnt_qposadr[jnt_a]
+    z_a = self.sim.data.qpos[adr_a + 2]  # preserve original surface height
+    self.sim.data.qpos[adr_a:adr_a+3] = [base[0] + self.obj_a_x, base[1] + self.obj_a_y, z_a]
+    self.sim.forward()
+```
+ 
+> Keep objects at least 0.15m apart in XY to avoid physics overlap. The default configuration (`obj_a_x=-0.4, obj_b_x=0.4`) has been validated with layout [5,1] and seed=2, where both objects land stably on the counter.
+ 
+### Usage
+ 
+**Preview the scene interactively** (no policy server needed):
+```bash
+cd ~/workspace/Isaac-GR00T
+gr00t/eval/sim/robocasa/robocasa_uv/.venv/bin/python grasp_experiments/fixed_pnp_env.py \
+    --preview --obj-a banana --obj-b bowl --seed 2
+```
+Controls: mouse drag to rotate, arrow keys to move robot, spacebar to toggle gripper, Ctrl+Q to exit.
+ 
+**Run with GR00T policy server:**
+```bash
+gr00t/eval/sim/robocasa/robocasa_uv/.venv/bin/python grasp_experiments/fixed_pnp_env.py \
+    --host <NGROK_HOST> --port <NGROK_PORT> \
+    --obj-a banana --obj-b bowl \
+    --seed 2 --n-episodes 3 --n-action-steps 8 --save-video
+```
+ 
+**Systematic distance experiment (vary x separation):**
+```bash
+# Default: objects 0.8m apart (validated with layout [5,1])
+gr00t/eval/sim/robocasa/robocasa_uv/.venv/bin/python grasp_experiments/fixed_pnp_env.py \
+    --host <NGROK_HOST> --port <NGROK_PORT> \
+    --obj-a-x -0.4 --obj-b-x 0.4 --seed 2 --n-episodes 3
+ 
+# Close: objects 1m apart
+gr00t/eval/sim/robocasa/robocasa_uv/.venv/bin/python grasp_experiments/fixed_pnp_env.py \
+    --host <NGROK_HOST> --port <NGROK_PORT> \
+    --obj-a-x -0.4 --obj-b-x 0.6 --seed 2 --n-episodes 3
+```
+ 
+### Parameters
+ 
+| Parameter | Description | Default |
+|---|---|---|
+| `--preview` | Launch interactive mjviewer | - |
+| `--obj-a` | Object A: specific name (`banana`, `apple`, `carrot`...) or category (`fruit`, `vegetable`...) | `banana` |
+| `--obj-b` | Object B: specific name (`bowl`, `plate`, `cup`...) or category (`receptacle`) | `bowl` |
+| `--obj-a-x` | Object A x offset from robot base, left(-)/right(+) in meters | `-0.4` |
+| `--obj-a-y` | Object A y offset from robot base, forward distance in meters | `0.4` |
+| `--obj-b-x` | Object B x offset from robot base, left(-)/right(+) in meters | `0.4` |
+| `--obj-b-y` | Object B y offset from robot base, forward distance in meters | `0.4` |
+| `--seed` | Seed for object randomization (kitchen layout fixed to [5,1]) | `2` |
+| `--n-episodes` | Number of episodes | `3` |
+| `--n-action-steps` | Action chunk size | `8` |
+| `--save-video` | Save rollout videos to `grasp_experiments/videos/` | - |
+ 
+Available object names (partial list): `banana`, `apple`, `carrot`, `cucumber`, `orange`, `tomato`, `sweet_potato`, `broccoli`, `can`, `bowl`, `plate`, `cup`, `mug`, `pot`, `pan`
+ 
+Videos are saved to `grasp_experiments/videos/`. Copy to Windows:
+```bash
+cp -r ~/workspace/Isaac-GR00T/grasp_experiments/videos /mnt/c/Users/Username/Desktop/
+```
+ 
+---
  
 ## Task List (Sample)
  
@@ -280,10 +404,13 @@ Selected tasks of interest:
 | `ValueError: Key backend: 'module://matplotlib_inline...'` | Colab MPLBACKEND pollution | Add `os.environ['MPLBACKEND'] = 'Agg'` before running |
 | `ImportError: flash_attn not installed` | Installed to system Python, not `.venv` | Use `.venv/bin/python -m pip install flash-attn` |
 | `evdev build error: Python.h not found` | Missing Python dev headers in WSL | `sudo apt install python3.10-dev` |
+| `apt install` 404 errors | Stale package cache | Run `sudo apt-get update` first |
 | Rollout hangs at `Episodes: 0%` | Waiting for server connection | Verify ngrok address and that Colab shows `Server is ready` |
 | `ping: True` but no Colab output | Normal — server doesn't log ping requests | Connection is fine, rollout is running |
 | `CUDA_HOME not set` (flash-attn on WSL) | No CUDA toolkit in WSL | Expected — flash-attn is not needed locally, skip |
-| `FlashAttention only supports Ampere GPUs or newer` | Colab assigned T4/V100 instead of A100 | Switch to A100 runtime, or uninstall flash-attn (results are same without it) |
+| `FlashAttention only supports Ampere GPUs or newer` | Colab assigned T4/V100 instead of A100 | Switch to A100 runtime, or uninstall flash-attn (results are identical without it) |
+| `TypeError: create_env_robosuite() got unexpected keyword argument` | Custom env kwargs passed through wrapper | Use dynamic subclass pattern — bake parameters into class definition, not kwargs |
+| `Server error: Video key must be shape (B, T, H, W, C)` | Missing T dimension in observation | Use official `create_grootrobocasa_env_class` + `run_rollout_gymnasium_policy` instead of manual obs construction |
 | ngrok `connection refused` warnings during model download | Server not ready yet, ngrok retrying | Normal — wait for `Server is ready` message before connecting |
  
 ---
