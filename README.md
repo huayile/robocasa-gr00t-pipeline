@@ -394,7 +394,7 @@ Examples include:
 | `CoffeeServeMug_PandaOmron_Env` | Move mug from coffee machine to counter |
 | `StackBowlsInSink_PandaOmron_Env` | Pick and stack bowls in sink |
 | `PrepareCoffee_PandaOmron_Env` | Multi-step coffee preparation |
-|TurnOnSinkFaucet_PandaOmron_Env |Turn on sink faucet|
+| `TurnOnSinkFaucet_PandaOmron_Env` |Turn on sink faucet|
  
 ---
  
